@@ -1,0 +1,78 @@
+from obspy.clients.fdsn import Client
+from obspy import UTCDateTime
+import os
+
+# Specifico il SERVIZIO_WEB desiderato
+codice_servizio_web = "EIDA"
+
+# Percorso della cartella di destinazione
+cart_dest = r"Segnali_Ravenna"
+
+# Creo la cartella di output se non esiste già
+os.makedirs(cart_dest, exist_ok=True)
+
+try:
+    # Creo un client per il SERVIZIO_WEB specificato
+    client = Client(codice_servizio_web)
+
+    # Coordinate geografiche
+    latitudine_minima = 44.16
+    latitudine_massima = 44.96
+    longitudine_minima = 11.2
+    longitudine_massima = 11.65
+
+    # Seleziono le stazioni basate sulle coordinate
+    stazioni = client.get_stations(minlatitude=latitudine_minima, maxlatitude=latitudine_massima,
+                                   minlongitude=longitudine_minima, maxlongitude=longitudine_massima,
+                                   network="*", station="*")
+
+    # Creo una lista per memorizzare i codici delle stazioni
+    lista_stazioni = []
+
+    # Aggiungo i codici delle stazioni alla lista
+    for rete in stazioni:
+        for stazione in rete.stations:
+            lista_stazioni.append(stazione.code)
+
+    print(f"Elenco delle stazioni entro il raggio specificato per {codice_servizio_web}:")
+    print(lista_stazioni)
+
+    cartella_giornaliera = os.path.join(cart_dest, "cartella_segnali_giornalieri")
+    os.makedirs(cartella_giornaliera, exist_ok=True)
+
+    # intervallo
+    inizio_tempo = UTCDateTime("2023-01-22T00:00:00.000")
+    fine_tempo = UTCDateTime("2023-03-22T00:00:00.000")
+
+    # canali
+    canali_desiderati = ["HHE", "HHN","HHZ", "BHE", "BHN", "BHZ"]
+
+    for codice_stazione in lista_stazioni:
+        try:
+            for canale in canali_desiderati:
+                inizio_giorno = inizio_tempo
+                while inizio_giorno < fine_tempo:
+                    fine_giorno = inizio_giorno + 86400  
+
+                    try:
+
+                        sismogramma = client.get_waveforms(network="*", station=codice_stazione, location="*", channel=canale,
+                                                          starttime=inizio_giorno, endtime=fine_giorno, attach_response=True)
+
+                        data_str = inizio_giorno.strftime("%Y-%m-%d")
+                        nome_file = f"Sismogramma_{codice_stazione}_{codice_servizio_web}_{canale}_{data_str}.mseed"
+                        percorso_file = os.path.join(cartella_giornaliera, nome_file)
+                        sismogramma.write(percorso_file, format="MSEED")
+
+                        print(f"Sismogramma salvato come {nome_file}")
+
+                    except Exception as e:
+                        print(f"Errore durante l'ottenimento dei dati del sismogramma per la stazione {codice_stazione}: {str(e)}")
+
+                    inizio_giorno += 86400
+
+        except Exception as e:
+            print(f"Nessuna stazione trovata per il giorno {inizio_giorno.strftime('%Y-%m-%d')}")
+
+except Exception as e:
+    print(f"Errore durante la connessione al servizio {codice_servizio_web}: {str(e)}")
